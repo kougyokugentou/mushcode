@@ -24,7 +24,7 @@ th u(NEWCOBJ,Who Renderer <WHO>,who,,,,WIZARD SAFE !NO_COMMAND,INHERIT SIDEFX SA
 &INC`IDLE [u(cobj,who)]=@attach %!/INC`SORT`IDLE;@select/inline gt(strlen(%1),0)=1,{@attach %!/INC`SEARCH=%1};@attach %!/INC`LIST=Idle,%1
 &INC`SORT`IDLE [u(cobj,who)]=@check words(u(setr,who,revwords(u(sortidle,u(FUN`WHO`MAIN)))))=@attach %!/INC`MSG=No players to show!
 
-&INC`LIST [u(cobj,who)]=@pemit %#=u(HEADER,Who[if(strlen(%0),%b-%b%0)]);@attach %!/INC`HEADER`[strfirstof(%0,MAIN)];@pemit %#=u(separator);@dolist %q<who>={@pemit %#=u(FUN`WHO`PLAYERLINE`[strfirstof(%0,MAIN)],##);@select/inline eq(#@,words(%q<who>))=1,{&MAXPLAYERS %!=u(setr,max,max(get(%!/MAXPLAYERS),words(%q<who>)));@pemit %#=u(SUBHEADER,words(%q<who>) Characters[if(u(game_config,WHO,SHOW_IPS),%Bfrom [words(setunion(iter(%q<who>,get(%i0/LASTSITE),,|),,|),|)] IPs)]%BConnected - Record is %q<max>)}}
+&INC`LIST [u(cobj,who)]=@pemit %#=u(HEADER,Who[if(strlen(%0),%b-%b%0)]);@attach %!/INC`HEADER`[strfirstof(%0,MAIN)];@pemit %#=u(separator);@dolist %q<who>={@pemit %#=u(FUN`WHO`PLAYERLINE`[strfirstof(%0,MAIN)],##);@select/inline eq(#@,words(%q<who>))=1,{&MAXPLAYERS %!=u(setr,max,max(get(%!/MAXPLAYERS),words(%q<who>)));@pemit %#=u(SUBHEADER,words(%q<who>) Characters[if(u(conf,SITES),%Bfrom [words(setunion(iter(%q<who>,get(%i0/LASTSITE),,|),,|),|)] IPs)]%BConnected - Record is %q<max>)}}
 
 &CONFIG`OPTIONS [u(cobj,who)]=HEADER|COLUMNS|SITES
 
@@ -47,6 +47,17 @@ th u(NEWCOBJ,Who Renderer <WHO>,who,,,,WIZARD SAFE !NO_COMMAND,INHERIT SIDEFX SA
 &FUN`WHO`PLAYERLINE`IDLE [u(cobj,who)]=u(FUN`WHO`PLAYERLINE`MAIN,%0)
 
 &STARTUP [u(cobj,who)]=@hook/override WHO=%!,CMD`+WHO
+
+@@ JSON
+&J`WHO`PLAYER [u(cobj,who)]=json(object,id,json(number,get(%0/D`ID)),name,json(string,name(%0)),objid,json(string,objid(%0)),idle,json(number,idle(%0)),conn,json(number,conn(%0)))
+
+&J`WHO`PLAYERS [u(cobj,who)]=u(J`CREATE`ARRAY,iter(%0,%i0,%b,chr(176)),WHO`PLAYER,%1)
+
+&J`WHO`PLAYERS`ALL [u(cobj,who)]=u(J`WHO`PLAYERS,u(lwhoid,%0))
+
+&J`WHO`PLAYERS`PACKAGE [u(Cobj,who)]=json(object,system,json(string,who),pages,json(number,%3),page,json(number,%2),data,u(J`WHO`PLAYERS,%1,%0))
+
+&W`WHO`RECEIVE [u(cobj,who)]=@dolist/inline lnum(1,u(setr,pages,ceil(fdiv(words(u(setr,lwho,u(lwhoid,%0))),u(setr,per,50)))))={@pemit %0=wsjson(u(J`WHO`PLAYERS`PACKAGE,%0,elements(%q<lwho>,lnum(add(1,mul(%q<per>,sub(%i0,1))),mul(%q<per>,%i0))),%i0,%q<pages>),null())}
 
 @@ COMMUNITY - WHO
 &HLP`WHO [u(cobj,who)]=[ansi(hc,Commands)]%R[align(5 [sub(u(width,%#),6)],,[ansi(h,+who)] - Show all visible\, connected players.%R[ansi(h,+who/idle)] - Like above\, but sorts by idle times.%R%R[ansi(h,+who <text>)] - Search for online players starting with <text>.)]

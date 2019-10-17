@@ -1,0 +1,102 @@
+th u(NEWCOBJ,STORYTELLER: Persona Management System <PERSONA>,persona,,u(cobj,story),,WIZARD SAFE !NO_COMMAND,INHERIT SIDEFX SAFE)
+
+&CMD`+PERSONA`PENNMUSH [u(cobj,persona)]=$^(?s)(?\:\+)?(persona|cover|set|aset|sdesc|adesc|snote|sflag|aflag)(?\:/(\S+)?)?(?\: +(.+?))?(?\:=(.*))?$:@attach %!/CMD`+PERSONA`MAIN
+@set [u(cobj,persona)]/CMD`+PERSONA`PENNMUSH=regexp
+&CMD`+PERSONA`RHOSTMUSH [u(cobj,persona)]=$^(?s)(?\:\+)?(persona|cover|set|aset|sdesc|adesc|snote|sflag|aflag)(?\:/(\\S+)?)?(?\: +(.+?))?(?\:=(.*))?$:@attach %!/CMD`+PERSONA`MAIN
+@set [u(cobj,persona)]/CMD`+PERSONA`RHOSTMUSH=regexp
+&CMD`+PERSONA`MAIN [u(cobj,persona)]=@attach %!/INC`GETSWITCH=%2;@include %!/INC`[if(match(set aset,%1),%1`)][u(strfirstof,%q<switch>,MAIN)]=%3,%4
+@set [u(cobj,persona)]/CMD`+PERSONA`[u(choosegame,RHOSTMUSH,PENNMUSH)]=no_command
+
+&SYSTEM`NAME [u(cobj,persona)]=PERSONA
+
+&SWITCHES`PLAYER [u(cobj,persona)]=ASSUME|RETURN|HISTORY
+&SWITCHES`ADMIN [u(cobj,persona)]=CREATE|DELETE|RENAME|APPROVE|UNAPPROVE|SELECT|SET|REMOVE|CONFIG
+
+&CONFIG`OPTIONS [u(cobj,persona)]=CHARGEN_DISTRICT
+
+&CONFIG`CHARGEN_DISTRICT [u(cobj,persona)]=What DBREF hosts the chargen district?
+&CONFIG`CHARGEN_DISTRICT`DEFAULT [u(cobj,persona)]=
+&CONFIG`CHARGEN_DISTRICT`VALID [u(cobj,persona)]=DBREF
+
+&PLAYER`CONNECT [u(cobj,persona)]=@attach %!/PLAYER`CREATE
+&PLAYER`CREATE [u(cobj,persona)]=@select/inline t(get(%0/D`PERSONA`PRIMARY))=0,{@attach %!/INC`TARGETCHAR=%0,1}
+
+&INC`TARGETCHAR [u(Cobj,persona)]=@attach %!/INC`CHECKPC=%0,%1;@select/inline not(get(r(t%1)/D`PERSONA`PRIMARY))=1,{@attach %!/PERSONA_PRIMARY=r(t%1),r(t%1id)}
+
+&PERSONA_PRIMARY [u(cobj,persona)]=@select/inline t(u(setr,pers_id,u(mysql,FIND`PERSONA`PRIMARY,%1)))=0,{@attach %!/INC`DOSQL=CREATE`PERSONA/pers_id,%1,name(%0),NULL;@attach %!/TEMPLATE_CHANGE=%q<pers_id>,1};&D`PERSONA %0=%q<pers_id>;&D`PERSONA`PRIMARY %0=%q<pers_id>;th unsetq(pers_id)
+
+&Q`CREATE`PERSONA [u(Cobj,persona)]=INSERT INTO vol_story_personas (owner_id,persona_name,persona_parent,persona_date_created) VALUES (?,?,?,UTC_TIMESTAMP())
+
+&OBJECT`RENAME [u(cobj,persona)]=@select/inline type(%0)=PLAYER,{@check get(%0/D`PERSONA`PRIMARY);@attach %!/INC`DOSQL=AUTORENAME`PERSONA,%1,get(%0/D`PERSONA`PRIMARY)}
+&Q`AUTORENAME`PERSONA [u(cobj,persona)]=UPDATE vol_story_personas SET persona_name=? WHERE persona_id=?
+
+&TEMPLATE_CHANGE [u(cobj,persona)]=@attach %!/INC`DOSQL=CLEAR`OLD_STATS,%0,%1;@attach %!/INC`DOSQL=CHANGE`TEMPLATE,%1,%0;@attach %!/INC`DOSQL=CLEAR`OLD_FIELDS,%0,%1;@attach %!/INC`DOSQL=INIT`DEFAULT_STATS,%0,%1,%0
+
+&Q`CLEAR`OLD_STATS [u(Cobj,persona)]=DELETE p FROM vol_story_persona_stats AS p LEFT JOIN vol_story_stats AS s ON p.stat_id=s.stat_id WHERE p.persona_id=? AND s.template_id NOT IN (0,?)
+&Q`CHANGE`TEMPLATE [u(cobj,persona)]=UPDATE vol_story_personas SET power_stat_value=1,template_id=? WHERE persona_id=?
+&Q`CLEAR`OLD_FIELDS [u(cobj,persona)]=DELETE p FROM vol_story_persona_field AS p LEFT JOIN vol_story_template_fields AS t ON p.field_id=t.field_id WHERE p.persona_id=? AND t.template_id NOT IN (0,?)
+&Q`CLEAR`OLD_SUBS [u(cobj,persona)]=DELETE p FROM vol_story_persona_sub_choices AS p LEFT JOIN vol_story_template_sub_choices AS c ON p.template_sub_choice_id=c.template_sub_choice_id LEFT JOIN vol_story_template_sub AS s ON c.template_sub_id=s.template_sub_id WHERE p.persona_id=? AND s.template_id NOT IN (0,?)
+&Q`INIT`DEFAULT_STATS [u(cobj,persona)]=INSERT INTO vol_story_persona_stats (persona_id,stat_id,stat_value) SELECT ?,stat_id,stat_value FROM vol_story_stat_defaults WHERE template_id IN (0,?) AND stat_id NOT IN (SELECT stat_id FROM vol_story_persona_stats WHERE persona_id=?)
+
+&INC`SELECT [u(cobj,persona)]=@attach %!/INC`CHECKPC=%0,1;@attach %!/INC`VALID`PERSONA=%1,1,%q<t1id>;@attach %!/SELECT_PERSONA=%#,%q<t1objid>,%q<Persona1.id>;@attach %!/INC`MSG=You are now targeting %q<t1name>'s [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona!
+
+&SELECT_PERSONA [u(cobj,persona)]=th u(attrib_set,%0,D`PERSONA`SELECT`OBJID,%1);th u(attrib_set,%0,D`PERSONA`SELECT`TIMESTAMP,secs());th u(attrib_set,%0,D`PERSONA`SELECT,%2)
+
+&INC`GETSELECT [u(cobj,persona)]=@check u(setr,pers_id,get(%#/D`PERSONA`SELECT))=@attach %!/INC`MSG=ERROR: You have not selected any Persona!;@attach %!/INC`CHECKPC=get(%#/D`PERSONA`SELECT`OBJID),1;@stop gte(sub(secs(),get(%#/D`PERSONA`SELECT`TIMESTAMP)),3600)=@attach %!/INC`MSG=ERROR: Select data timed out. Please use +persona/select again!;th u(attrib_set,%#,D`PERSONA`SELECT`TIMESTAMP,secs());@attach %!/INC`LOADSQL=PERSONA,%q<pers_id>,%0;th unsetq(pers_id)
+
+&INC`CREATE [u(cobj,persona)]=@attach %!/INC`TARGETCHAR=%0,1;@attach %!/INC`VALID`ENAME=%1,Persona Name;@stop u(mysql,FIND`PERSONA`EXACT,%q<value>,%q<t1id>)=@attach %!/INC`MSG=ERROR: %q<t1name> already has a Persona named '%q<value>'!;@attach %!/INC`DOSQL=CREATE`PERSONA/pers_id,%q<t1id>,%q<value>,get(%q<t1>/D`PERSONA`PRIMARY);@attach %!/TEMPLATE_CHANGE=%q<pers_id>,1;@attach %!/INC`MSG=%q<t1name> now has a Persona named '%q<value>'!;@attach %!/INC`MSG`NOTICE=You now have a Persona named '%q<value>'!,%q<t1>;@attach %!/INC`MSG`CHAN=Created Persona '%q<value>' for %q<t1name>!
+
+&INC`APPROVE [u(cobj,persona)]=@attach %!/INC`TARGETCHAR=%0,1;@attach %!/INC`VALID`PERSONA=before(%1,/),1,%q<t1id>;@stop %q<Persona1.approve>=@attach %!/INC`MSG=ERROR: That persona is already approved!;@attach %!/INC`CHECKPC=%#,2;@attach %!/APPROVE_PERSONA=%q<Persona1.id>,%q<t2id>,1,u(setr,notes,left(after(%1,/),240));@attach %!/INC`MSG=%q<t1name>'s [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona is now approved![if(strlen(%q<notes>),%bApproval Notes: %q<notes>)])];@attach %!/INC`MSG`NOTICE=Your %q<msg>!,%q<t1>;@attach %!/INC`MSG`CHAN=%q<t1name>'s %q<msg>;@trigger/spoof [u(cobj,story)]/PERSONA`APPROVE=%q<t1objid>,%q<Persona1.id>,%q<t2objid>,%q<t2id>,%q<notes>
+
+&APPROVE_PERSONA [u(cobj,persona)]=@attach %!/INC`DOSQL=CREATE`APPROVAL/app_id,%0,%1,%2,if(strlen(%3),%3,NULL);@attach %!/INC`DOSQL=SET`APPROVAL,%q<app_id>,%0;th unsetq(app_id)
+
+&Q`CREATE`APPROVAL [u(cobj,persona)]=INSERT INTO vol_story_personas_approval (persona_id,admin_id,approval_state,approval_date,approval_notes) VALUES (?,?,?,UTC_TIMESTAMP(),?)
+&Q`SET`APPROVAL [u(cobj,persona)]=UPDATE vol_story_personas SET approval_id=? WHERE persona_id=?
+
+&INC`UNAPPROVE [u(cobj,persona)]=@attach %!/INC`TARGETCHAR=%0,1;@attach %!/INC`VALID`PERSONA=before(%1,/),1,%q<t1id>;@check %q<Persona1.approve>=@attach %!/INC`MSG=ERROR: That persona is not approved!;@attach %!/INC`CHECKPC=%#,2;@attach %!/APPROVE_PERSONA=%q<Persona1.id>,%q<t2id>,0,u(setr,notes,left(after(%1,/),240));@attach %!/INC`MSG=%q<t1name>'s [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona is no longer approved![if(strlen(%q<notes>),%bUnapproval Notes: %q<notes>)])];@attach %!/INC`MSG`NOTICE=Your %q<msg>!,%q<t1>;@attach %!/INC`MSG`CHAN=%q<t1name>'s %q<msg>;@trigger/spoof [u(cobj,story)]/PERSONA`UNAPPROVE=%q<t1objid>,%q<Persona1.id>,%q<t2objid>,%q<t2id>,%q<notes>
+
+&INC`MAIN [u(cobj,persona)]=@attach %!/INC`CHECKPC=u(strfirstof,if(u(isadmin,%#),%0),%#),1;@pemit %#=u(header,Personas: %q<t1name>);@pemit %#=ansi(u(color,%#,PERSONA,COLUMN_NAMES),align(5 20 15 2 15 15,ID,Name,Template,A,AppDate,CreateDate));@pemit %#=u(separator);@dolist/inline u(mysql,FIND`PERSONA`LIST`ID,%q<t1id>)={@attach %!/INC`LOADSQL=Persona,%i0;@pemit %#=align(5 20 15 2 15 15,%q<Persona.id>,%q<Persona.name>,%q<Persona.templatename>,if(%q<Persona.approve>,ansi(hg,Y),ansi(hr,N)),u(fancydate,%q<Persona.approvedate>,%#),u(fancydate,%q<Persona.createdate>,%#))};@pemit %#=u(footer)
+
+&Q`ALL`PLAYABLE [u(cobj,persona)]=SELECT template_id FROM vol_template WHERE template_playable>0
+
+&INC`SET [u(Cobj,persona)]=@attach %!/INC`GETSELECT=1;@attach %!/INC`PARTIAL=before(%0,/),u(SETTABLE,if(%3,u(mysql,ALL`PLAYABLE),%q<Persona1.templateid>)),|,category;@select/inline hasattr(%!/SET`%q<category>)=1,{@attach %!/SET`%q<category>},0,{@attach %!/SET`SQL=%q<category>,%q<Persona1.templateId>,after(%0,before(%0,/)/),%1}
+
+&SETTABLE [u(cobj,persona)]=Template|Power|Splat|Field[if(strlen(u(setr,res,u(mysql3,FIND`CATEGORY`LIST,u(SQL`IN`NUMBER,%0)))),|[iter(%q<res>,%i0,chr(176),|)])]
+
+&HIERARCHY [u(Cobj,persona)]=@attach %!/INC`SEARCHSQL=%0,Category,CATEGORY,1,%1;@check strlen(%2)=@attach %!/INC`MSG=ERROR: Nothing else entered to enter! Must enter a Subcategory or Stat to set!;th setq(subs,words(%2,/));@attach %!/INC`LOADSQL=STAT,u(setr,curparent,%q<Category1.id>),0;@dolist/inline/delimit / %2={@stop gt(add(strmatch(%i0,*>*),strmatch(%i0,*:*),strmatch(%i0,*_*)),1)=@attach %!/INC`MSG=Can only use one mode for CONTEXT\, SPECIALTY\, or CUSTOM! Cannot combine!;@attach %!/INC`SEARCHSQL=before(before(before(%i0,:),_),>),Stat or Sub-Category,STAT,inum(0),%q<curparent>;th u(setq,curparent,r(Stat[inum(0)].id));@attach %!/INC`LOADSQL=STAT,%q<curparent>,Final;th u(setq,context,trim(after(%i0,:)));th u(setq,custom,trim(after(%i0,>)));th u(setq,special,trim(after(%i0,_)))};@attach %!/INC`LOADSQL=STAT,%q<StatFinal.parentid>,Parent
+
+&HIERNAME [u(cobj,persona)]=%q<category1.name>/[iter(lnum(1,%q<subs>),r(Stat%i0.name),%b,/)]
+
+&SET`SQL [u(cobj,persona)]=@attach %!/HIERARCHY=%0,%1,%2;th u(setr,mode,if(strlen(%q<context>),CONTEXT,if(strlen(%q<custom>),CUSTOM,if(strlen(%q<special>),SPECIAL,SET))));@check %q<StatFinal.canset>=@attach %!/INC`MSG=ERROR: [u(hiername)] cannot be set!;@attach %!/SET`SQL`%q<mode>
+
+&SET`SQL`SET [u(cobj,persona)]=@stop %q<StatFinal.requirecontext>=@attach %!/INC`MSG=ERROR: [u(hiername)] requires a context! Try this name as %q<StatFinal.name>: Blahblah...;@attach %!/INC`VALID`INT=%3;@check eq(%q<value>,bound(%q<value>,%q<StatFinal.minimum>,%q<StatFinal.maximum>))=@attach %!/INC`MSG=ERROR: [u(hiername)] cannot be less than %q<StatFinal.minimum> or greater than %q<StatFinal.maximum>!;@attach %!/INC`DOSQL=SET`STAT/pstat_id,%q<Persona1.id>,0,%q<StatFinal.id>,%q<value>;@attach %!/INC`MSG=%q<t1name>'s [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona - Set [u(hiername)] to: %q<value>)];@select/inline t(%2)=0,{@attach %!/INC`MSG`NOTICE=Your %q<msg>;@attach %!/INC`MSG`CHAN=%q<msg>};
+
+&Q`SET`STAT [u(Cobj,persona)]=INSERT INTO vol_story_persona_stats (persona_id,persona_stat_type,stat_id,stat_value) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE stat_value=VALUES(stat_value)
+
+&SET`SQL`CONTEXT [u(Cobj,persona)]=@check %q<StatFinal.requirecontext>=@attach %!/INC`MSG=ERROR: [u(hiername)] does not require a context to be set!;@attach %!/INC`VALID`ENAME=%q<context>,Context;th u(setq,context,u(capnames,squish(%q<context>)));@attach %!/INC`VALID`INT=%3;@check eq(%q<value>,bound(%q<value>,%q<StatFinal.minimum>,%q<StatFinal.maximum>))=@attach %!/INC`MSG=ERROR: [u(hiername)]: %q<context> cannot be less than %q<StatFinal.minimum> or greater than %q<StatFinal.maximum>!;@attach %!/INC`DOSQL=SET`CONTEXT/pstat_id,%q<Persona1.id>,0,%q<StatFinal.id>,%q<context>,%q<value>;@attach %!/INC`MSG=%q<t1name>'s [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona - Set [u(hiername)]: %q<context> to: %q<value>)];@select/inline t(%2)=0,{@attach %!/INC`MSG`NOTICE=Your %q<msg>;@attach %!/INC`MSG`CHAN=%q<msg>}
+
+&Q`SET`CONTEXT [u(Cobj,persona)]=INSERT INTO vol_story_persona_stats (persona_id,persona_stat_type,stat_id,persona_stat_name,stat_value) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE stat_value=VALUES(stat_value),persona_stat_name=VALUES(persona_stat_name)
+
+&SET`SQL`CUSTOM [u(cobj,persona)]=@check %q<StatFinal.custom>=@attach %!/INC`MSG=ERROR: [u(hiername)] does not allow customs!;@attach %!/INC`VALID`ENAME=%q<custom>,Custom Stat Name;th u(setq,custom,u(capnames,squish(%q<custom>)));@attach %!/INC`VALID`INT=%3;@check eq(%q<value>,bound(%q<value>,%q<StatFinal.minimum>,%q<StatFinal.maximum>))=@attach %!/INC`MSG=ERROR: [u(hiername)]: %q<custom> cannot be less than %q<StatFinal.minimum> or greater than %q<StatFinal.maximum>!;@attach %!/INC`DOSQL=SET`CONTEXT/pstat_id,%q<Persona1.id>,2,%q<StatFinal.id>,%q<custom>,%q<value>;@attach %!/INC`MSG=%q<t1name>'s [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona - Set [u(hiername)] Custom Stat '%q<custom>' to: %q<value>)];@select/inline t(%2)=0,{@attach %!/INC`MSG`NOTICE=Your %q<msg>;@attach %!/INC`MSG`CHAN=%q<msg>}
+
+&SET`SQL`SPECIAL [u(cobj,persona)]=@check %q<StatFinal.specialties>=@attach %!/INC`MSG=ERROR: [u(hiername)] does not allow Specialties!;@attach %!/INC`VALID`ENAME=%q<special>,Specialty Name;th u(setq,special,u(capnames,squish(%q<special>)));@attach %!/INC`VALID`INT=%3;@check eq(%q<value>,bound(%q<value>,%q<StatFinal.minimum>,%q<StatFinal.maximum>))=@attach %!/INC`MSG=ERROR: [u(hiername)]: %q<special> cannot be less than %q<StatFinal.minimum> or greater than %q<StatFinal.maximum>!;@attach %!/INC`DOSQL=SET`CONTEXT/pstat_id,%q<Persona1.id>,1,%q<StatFinal.id>,%q<special>,%q<value>;@attach %!/INC`MSG=%q<t1name>'s [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona - Set [u(hiername)] Specialty '%q<special>' to: %q<value>)];@select/inline t(%2)=0,{@attach %!/INC`MSG`NOTICE=Your %q<msg>;@attach %!/INC`MSG`CHAN=%q<msg>}
+
+&SET`TEMPLATE [u(cobj,persona)]=@attach %!/INC`VALID`TEMPLATE=%1,1;@check %q<Template1.playable>=@attach %!/INC`MSG=ERROR: The %q<Template1.name> Template is not playable.;@attach %!/INC`VERIFY=[ansi(hr,WARNING:)] This will change %q<Persona1.name> into a %q<Template1.name>. All current Template-specific data such as stats and merits will be DELETED. This cannot be undone. Enter the same command again to verify.,TEMPLATE CHANGE %q<Persona1.id>;@attach %!/TEMPLATE_CHANGE=%q<Persona1.id>,%q<Template1.id>;@attach %!/INC`MSG=%q<t1name>'s [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona is now a %q<Template1.name>)];@select/inline t(%2)=0,{@attach %!/INC`MSG`NOTICE=Your %q<msg>.;@attach %!/INC`MSG`CHAN=%q<t1name>'s %q<msg>}
+
+&SET`POWER [u(cobj,persona)]=@check strlen(%q<Persona1.powerstatname>)=@attach %!/INC`MSG=ERROR: %q<Persona1.templatename>'s don't have Power Stats!;@attach %!/INC`VALID`POSINT=%1;@attach %!/INC`DOSQL=SET`POWER,%q<value>,%q<Persona1.id>;@attach %!/INC`MSG=%q<t1name>'s [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona's %q<Persona1.powerstatname> is now: %q<value>)];@select/inline t(%2)=0,{@attach %!/INC`MSG`NOTICE=Your %q<msg>.;@attach %!/INC`MSG`CHAN=%q<t1name>'s %q<msg>}
+
+&Q`SET`POWER [u(Cobj,persona)]=UPDATE vol_story_personas SET power_stat_value=? WHERE persona_id=?
+
+&SET`SPLAT [u(cobj,persona)]=@attach %!/INC`VALID`SUBTYPE=after(%0,/),1,%q<Persona1.templateid>;@select/inline strlen(%1)=0,{@attach %!/INC`DOSQL=CLEAR`SUBCHOICE,%q<Persona1.id>,%q<SubType1.id>;@attach %!/INC`MSG=%q<t1name>'s  [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona's %q<subtype1.name> is now: empty!)]},{@attach %!/INC`VALID`SUBCHOICE=%1,1,%q<SubType1.id>;@attach %!/INC`DOSQL=CLEAR`SUBCHOICE,%q<Persona1.id>,%q<SubType1.id>;@attach %!/INC`DOSQL=SET`SUBCHOICE,%q<Persona1.id>,%q<subchoice1.id>;@attach %!/INC`MSG=%q<t1name>'s [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona's %q<subtype1.name> is now: %q<subchoice1.name>)]};@select/inline t(%2)=0,{@attach %!/INC`MSG`NOTICE=Your %q<msg>,%q<t1>;@attach %!/INC`MSG`CHAN=%q<msg>}
+
+&Q`CLEAR`SUBCHOICE [u(cobj,persona)]=DELETE p FROM vol_story_persona_sub_choices AS p LEFT JOIN volv_story_template_sub_choices AS c ON p.template_sub_choice_id=c.template_sub_choice_id WHERE p.persona_id=? AND c.template_sub_id=?
+
+&Q`SET`SUBCHOICE [u(cobj,persona)]=INSERT INTO vol_story_persona_sub_choices (persona_id,template_sub_choice_id) VALUES (?,?)
+
+&SET`FIELD [u(Cobj,persona)]=@attach %!/INC`VALID`FIELD=after(%0,/),1,%q<Persona1.templateid>;@check strlen(%1)=@attach %!/INC`MSG=ERROR: Must enter %q<field1.name> contents!;@attach %!/INC`DOSQL=SET`FIELD,%q<field1.id>,%q<persona1.id>,%1;@attach %!/INC`MSG=%q<t1name>'s [u(setr,msg,[if(strmatch(%q<t1name>,%q<Persona1.name>),Primary,'%q<Persona1.name>')] Persona's %q<field1.name> is now: %1)];@select/inline t(%2)=0,{@attach %!/INC`MSG`NOTICE=Your %q<msg>,%q<t1>;@attach %!/INC`MSG`CHAN=%q<msg>}
+
+&Q`SET`FIELD [u(cobj,persona)]=INSERT INTO vol_story_persona_field (field_id,persona_id,field_answer) VALUES (?,?,?) ON DUPLICATE KEY UPDATE field_answer=VALUES(field_answer)
+
+&INC`SET`MAIN [u(cobj,persona)]=@check strmatch(u(conf,CHARGEN_DISTRICT),objid(parent(%l)))=@pemit %#=Huh?  (Type "help" for help.);@attach %!/INC`CHECKPC=%#,1;@attach %!/INC`VALID`PERSONA=get(%q<t1>/D`PERSONA`PRIMARY),1,%q<t1id>;@stop %q<persona1.approve>=@attach %!/INC`MSG=ERROR: Your Persona is approved. Cannot modify in Chargen!;@attach %!/SELECT_PERSONA=%#,%q<t1objid>,%q<Persona1.id>;@attach %!/INC`SET=%0,%1,1
+
+&INC`ASET`MAIN [u(cobj,persona)]=@attach %!/INC`SET=%0,%1,0,1

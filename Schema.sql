@@ -21,6 +21,7 @@ entity_type enumeration:
 7 - Group Membership.
 8 - District.
 9 - Combat System Entity.
+10 - Rumor Circles.
 
 100+ - Game-specific implementations.
 */
@@ -28,7 +29,8 @@ entity_type enumeration:
 CREATE TABLE IF NOT EXISTS vol_lockname (
 	lock_id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
 	lock_name VARCHAR(50) NOT NULL,
-	PRIMARY KEY(lock_id)
+	PRIMARY KEY(lock_id),
+	INDEX(lock_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
 
 CREATE TABLE IF NOT EXISTS vol_lock (
@@ -69,7 +71,8 @@ CREATE TABLE IF NOT EXISTS vol_account (
 	account_date_activity DATETIME NULL,
 	PRIMARY KEY(account_id),
 	FOREIGN KEY(account_id) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
-	INDEX(account_date_activity)
+	INDEX(account_date_activity),
+	INDEX(account_email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
 CREATE OR REPLACE VIEW volv_account AS
@@ -123,11 +126,13 @@ CREATE TABLE IF NOT EXISTS vol_character (
 	FOREIGN KEY(character_id) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	FOREIGN KEY(account_id) REFERENCES vol_account(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
 	INDEX(character_date_activity),
-	INDEX(account_id,character_alt)
+	INDEX(account_id,character_alt),
+	INDEX(character_is_guest),
+	INDEX(character_is_approved)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
 
 CREATE OR REPLACE VIEW volv_character AS
-	SELECT c.character_id,e.entity_name AS character_name,e.entity_objid AS character_objid,c.character_is_deleted,c.account_id,c.character_alt,c.character_date_created,UNIX_TIMESTAMP(c.character_date_created) AS character_date_created_secs,c.character_date_activity,UNIX_TIMESTAMP(c.character_date_activity) AS character_date_activity_secs,c.character_date_approved,UNIX_TIMESTAMP(c.character_date_approved) AS character_date_approved_secs,c.character_status,c.character_is_guest
+	SELECT c.character_id,e.entity_name AS character_name,e.entity_objid AS character_objid,c.character_is_deleted,c.account_id,c.character_alt,c.character_date_created,UNIX_TIMESTAMP(c.character_date_created) AS character_date_created_secs,c.character_date_activity,UNIX_TIMESTAMP(c.character_date_activity) AS character_date_activity_secs,c.character_is_approved,c.character_date_approved,UNIX_TIMESTAMP(c.character_date_approved) AS character_date_approved_secs,c.character_status,c.character_is_guest
 	FROM vol_character AS c LEFT JOIN vol_entity AS e ON e.entity_id=c.character_id;
 
 CREATE OR REPLACE VIEW volv_account_characters AS
@@ -206,7 +211,7 @@ CREATE PROCEDURE volp_field(IN in_entity_id INT UNSIGNED,IN in_field_type TINYIN
 DELIMITER ;
 
 CREATE OR REPLACE VIEW volv_infofile AS
-	SELECT i.field_id AS info_id,i.field_type AS info_type,i.field_name AS info_name,i.field_text AS info_text,i.field_date_modified AS info_date_modified,UNIX_TIMESTAMP(i.field_date_modified) AS info_date_modified_secs,e.entity_id AS owner_id,e.entity_name AS owner_name,e.entity_objid AS owner_objid,l.locker_id,e2.entity_name AS locker_name,e2.entity_objid AS locker_objid,l.locked_date,UNIX_TIMESTAMP(l.locked_date) AS locked_date_secs,e3.entity_name as author_name,e3.entity_objid AS author_objid	FROM vol_field AS i LEFT JOIN vol_entity AS e ON i.entity_id=e.entity_id LEFT JOIN vol_field_lock AS l ON i.field_id=l.field_id LEFT JOIN vol_entity AS e2 ON e2.entity_id=l.locker_id LEFT JOIN vol_entity AS e3 ON e3.entity_id=i.author_id
+	SELECT i.field_id AS info_id,i.field_type AS info_type,i.field_name AS info_name,i.field_text AS info_text,i.field_date_modified AS info_date_modified,UNIX_TIMESTAMP(i.field_date_modified) AS info_date_modified_secs,e.entity_id AS owner_id,e.entity_name AS owner_name,e.entity_objid AS owner_objid,l.locker_id,e2.entity_name AS locker_name,e2.entity_objid AS locker_objid,l.locked_date,UNIX_TIMESTAMP(l.locked_date) AS locked_date_secs,e3.entity_name as author_name,e3.entity_objid AS author_objid FROM vol_field AS i LEFT JOIN vol_entity AS e ON i.entity_id=e.entity_id LEFT JOIN vol_field_lock AS l ON i.field_id=l.field_id LEFT JOIN vol_entity AS e2 ON e2.entity_id=l.locker_id LEFT JOIN vol_entity AS e3 ON e3.entity_id=i.author_id
 	ORDER BY i.entity_id,i.field_type,i.field_name;
 
 
@@ -415,7 +420,12 @@ CREATE TABLE IF NOT EXISTS vol_job (
 	job_is_anonymous TINYINT UNSIGNED DEFAULT 0,
 	INDEX(job_status,job_date_closed),
 	PRIMARY KEY(job_id),
-	FOREIGN KEY(bucket_id) REFERENCES vol_bucket(bucket_id) ON UPDATE CASCADE ON DELETE CASCADE
+	FOREIGN KEY(bucket_id) REFERENCES vol_bucket(bucket_id) ON UPDATE CASCADE ON DELETE CASCADE,
+	INDEX(job_date_due),
+	INDEX(job_status),
+	INDEX(job_date_created),
+	INDEX(job_date_player_activity),
+	INDEX(job_date_admin_activity)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
 	
 CREATE TABLE IF NOT EXISTS vol_jlink (
@@ -726,7 +736,8 @@ CREATE TABLE IF NOT EXISTS vol_bbpost (
 	PRIMARY KEY(post_id),
 	FOREIGN KEY(board_id) REFERENCES vol_board(board_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	FOREIGN KEY(entity_id) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
-	UNIQUE(board_id,post_display_num)
+	UNIQUE(board_id,post_display_num),
+	INDEX(post_date_created)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
 
 CREATE TABLE IF NOT EXISTS vol_bbcomment (
@@ -823,12 +834,13 @@ CREATE PROCEDURE volp_bbcomment(IN in_author_id INT UNSIGNED,IN in_post_id INT U
 	BEGIN
 		DECLARE new_comment_timestamp DATETIME DEFAULT UTC_TIMESTAMP();
 		DECLARE new_comment_id,new_comment_number INT UNSIGNED;
-    SELECT MAX(comment_display_num)+1 INTO new_comment_number FROM vol_bbcomment WHERE post_id=in_post_id;
-    IF new_comment_number IS NULL THEN
-        SET new_comment_number=1;
-    END IF;
+        SELECT MAX(comment_display_num)+1 INTO new_comment_number FROM vol_bbcomment WHERE post_id=in_post_id;
+        IF new_comment_number IS NULL THEN
+            SET new_comment_number=1;
+        END IF;
 		INSERT INTO vol_bbcomment (post_id,comment_display_num,entity_id,comment_date_created,comment_date_modified,comment_text,comment_anonymous) VALUES (in_post_id,new_comment_number,in_author_id,new_comment_timestamp,new_comment_timestamp,in_comment_text,in_comment_anonymous);
 		SET new_comment_id=LAST_INSERT_ID();
+		DELETE FROM vol_bbread WHERE post_id=in_post_id;
 		INSERT INTO vol_bbread (post_id,entity_id,bbread_date_checked) VALUES (in_post_id,in_account_id,new_comment_timestamp) ON DUPLICATE KEY UPDATE bbread_date_checked=VALUES(bbread_date_checked);
 		SELECT new_comment_id,new_comment_number;
 	END $$
@@ -893,7 +905,7 @@ CREATE OR REPLACE VIEW volv_help_file AS
 CREATE OR REPLACE VIEW volv_help_file_load AS
 	SELECT f.help_file_id,f.help_file_name,f.help_category_name,f.help_file_dbattr,f.help_file_text,s.sub_file_count
 	FROM volv_help_file AS f LEFT JOIN volv_sub_files AS s ON f.help_file_id=s.help_file_id;
-	
+
 CREATE OR REPLACE VIEW volv_help_pile AS
 	SELECT help_category_id,COUNT(help_file_id) AS help_count
 	FROM vol_help_file
@@ -924,13 +936,15 @@ DROP PROCEDURE IF EXISTS volp_help_file;
 DELIMITER $$
 CREATE PROCEDURE volp_help_file(IN in_help_category_id MEDIUMINT UNSIGNED,IN in_help_file_name VARCHAR(255))
 	BEGIN
+	DECLARE category_type_id TINYINT UNSIGNED;
 	DECLARE found_file_id MEDIUMINT UNSIGNED;
-	SELECT help_file_id INTO found_file_id FROM volv_help_file WHERE help_category_id=in_help_category_id AND help_file_name=in_help_file_name;
+	SELECT help_category_type INTO category_type_id FROM vol_help_category WHERE help_category_id=in_help_category_id;
+	SELECT help_file_id INTO found_file_id FROM volv_help_file WHERE help_category_type=category_type_id AND help_file_name=in_help_file_name;
 	IF found_file_id IS NULL THEN
 		INSERT INTO vol_help_file(help_category_id,help_file_name,help_file_date_created,help_file_date_modified) VALUES (in_help_category_id,in_help_file_name,UTC_TIMESTAMP(),UTC_TIMESTAMP());
 		SET found_file_id=LAST_INSERT_ID();
 	ELSE
-		UPDATE vol_help_file SET help_file_name=in_help_file_name,help_file_date_modified=UTC_TIMESTAMP() WHERE help_file_id=found_file_id;
+		UPDATE vol_help_file SET help_file_name=in_help_file_name,help_category_id=in_help_category_id,help_file_date_modified=UTC_TIMESTAMP() WHERE help_file_id=found_file_id;
 	END IF;
 	SELECT found_file_id;
 	END $$
@@ -1022,6 +1036,7 @@ CREATE OR REPLACE VIEW volv_plot_agg AS
 CREATE TABLE IF NOT EXISTS vol_scene (
 	scene_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
 	scene_title VARCHAR(255),
+	scene_title_ansi VARCHAR(255) NULL DEFAULT NULL,
 	scene_pitch TEXT NULL,
 	scene_outcome TEXT NULL,
 	post_id INT UNSIGNED NULL,
@@ -1035,7 +1050,8 @@ CREATE TABLE IF NOT EXISTS vol_scene (
 	PRIMARY KEY(scene_id),
 	FOREIGN KEY(post_id) REFERENCES vol_bbpost(post_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	INDEX(scene_date_scheduled,scene_status),
-	INDEX(scene_id,scene_title,scene_status)
+	INDEX(scene_id,scene_title,scene_status),
+	INDEX(scene_title)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
 	
 CREATE TABLE IF NOT EXISTS vol_actor (
@@ -1044,6 +1060,7 @@ CREATE TABLE IF NOT EXISTS vol_actor (
 	character_id INT UNSIGNED NOT NULL,
 	actor_type TINYINT UNSIGNED NOT NULL DEFAULT 0,
 	actor_status TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	action_count INT UNSIGNED NOT NULL DEFAULT 0,
 	PRIMARY KEY(actor_id),
 	UNIQUE(scene_id,character_id),
 	INDEX(scene_id,character_id,actor_type),
@@ -1066,7 +1083,7 @@ CREATE PROCEDURE volp_actor(IN in_character_id INT UNSIGNED,IN in_scene_id INT U
 DELIMITER ;
 
 CREATE OR REPLACE VIEW volv_actor AS
-	SELECT a.scene_id,a.actor_id,c.character_id,c.character_name,c.character_objid,a.actor_type,a.actor_status FROM vol_actor AS a LEFT JOIN volv_character AS c ON c.character_id=a.character_id;
+	SELECT a.scene_id,a.actor_id,c.character_id,c.character_name,c.character_objid,a.actor_type,a.actor_status,a.action_count FROM vol_actor AS a LEFT JOIN volv_character AS c ON c.character_id=a.character_id;
 
 CREATE OR REPLACE VIEW volv_scene AS
 	SELECT s.scene_id,s.scene_title,s.scene_pitch,s.scene_outcome,s.post_id,s.scene_date_created,UNIX_TIMESTAMP(s.scene_date_created) AS scene_date_created_secs,s.scene_date_scheduled,UNIX_TIMESTAMP(s.scene_date_scheduled) AS scene_date_scheduled_secs,s.scene_date_started,UNIX_TIMESTAMP(s.scene_date_started) AS scene_date_started_secs,s.scene_date_finished,UNIX_TIMESTAMP(s.scene_date_finished) AS scene_date_finished_secs,s.scene_status,s.scene_log_ooc,a.character_id AS runner_id,a.character_name AS runner_name,a.character_objid AS runner_objid,s.scene_max_tags as scene_max_tags
@@ -1106,10 +1123,10 @@ CREATE OR REPLACE VIEW volv_action AS
 	ORDER BY ac.scene_id,a.action_date_created;
 
 CREATE OR REPLACE VIEW volv_action_agg AS
-	SELECT actor_id,COUNT(action_id) AS action_count,MAX(action_date_created) AS action_latest FROM volv_action WHERE action_is_deleted=0 GROUP BY actor_id;
-	
+	SELECT actor_id,MAX(action_date_created) AS action_latest FROM volv_action WHERE action_is_deleted=0 GROUP BY actor_id;
+
 CREATE OR REPLACE VIEW volv_actor_agg AS
-	SELECT a.*,ag.action_count,ag.action_latest,UNIX_TIMESTAMP(ag.action_latest) AS action_latest_secs from volv_actor AS a LEFT JOIN volv_action_agg AS ag ON a.actor_id=ag.actor_id;
+	SELECT a.*,ag.action_latest,UNIX_TIMESTAMP(ag.action_latest) AS action_latest_secs from volv_actor AS a LEFT JOIN volv_action_agg AS ag ON a.actor_id=ag.actor_id;
 	
 CREATE OR REPLACE VIEW volv_scene_stats AS
 	SELECT scene_id,SUM(action_count) AS action_count,MAX(action_latest) AS action_latest,UNIX_TIMESTAMP(MAX(action_latest)) AS action_latest_secs FROM volv_actor_agg GROUP BY scene_id;
@@ -1183,16 +1200,118 @@ CREATE PROCEDURE volp_xp(IN in_character_id INT UNSIGNED,IN in_xp_type TINYINT U
   END $$
 DELIMITER ;
 
+
+-- SQL Schema for the SMS TXT Messenger service.
+CREATE TABLE IF NOT EXISTS vol_sms_msg (
+    msg_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    msg_date_created DATETIME NOT NULL,
+    msg_text text NOT NULL,
+    PRIMARY KEY(msg_id),
+    INDEX(msg_date_created)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
+
+-- Table that links messages to characters.
+CREATE TABLE IF NOT EXISTS vol_sms_msg_link (
+    msg_link_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    msg_id INT UNSIGNED NOT NULL,
+    character_id INT UNSIGNED NOT NULL,
+    msg_sender_spoofname VARCHAR(255) NULL,
+    msg_link_type TINYINT UNSIGNED NOT NULL,
+    msg_link_display TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    msg_date_read DATETIME NULL,
+    PRIMARY KEY(msg_link_id),
+    FOREIGN KEY(msg_id) REFERENCES vol_sms_msg(msg_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY(character_id) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    UNIQUE(msg_id,character_id),
+    INDEX(msg_link_type),
+    INDEX(msg_id,msg_link_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
+
+CREATE OR REPLACE VIEW volv_sms_msg_link_agg AS
+    SELECT l.msg_id,l.msg_link_type,GROUP_CONCAT(c.character_name ORDER BY c.character_name SEPARATOR '|') AS character_names,GROUP_CONCAT(l.character_id ORDER BY c.character_name SEPARATOR ' ') AS character_ids FROM vol_sms_msg_link AS l LEFT JOIN volv_character AS c ON l.character_id=c.character_id GROUP BY msg_id,msg_link_type;
+
+CREATE OR REPLACE VIEW volv_sms_msg AS
+    SELECT m.msg_id AS msg_id,m.msg_date_created AS msg_date_created,UNIX_TIMESTAMP(m.msg_date_created) AS msg_date_created_secs,m.msg_text AS msg_text,c.character_id AS sender_id,c.character_name AS sender_name,ol.msg_sender_spoofname AS msg_sender_spoofname,IF(CHAR_LENGTH(ol.msg_sender_spoofname),ol.msg_sender_spoofname,c.character_name) AS sender_display_name,a.character_names AS recipient_names,a.character_ids AS recipient_ids FROM vol_sms_msg AS m LEFT JOIN vol_sms_msg_link AS ol ON m.msg_id=ol.msg_id AND ol.msg_link_type=1 LEFT JOIN volv_character AS c ON ol.character_id=c.character_id LEFT JOIN volv_sms_msg_link_agg AS a ON m.msg_id=a.msg_id AND a.msg_link_type=0;
+
+CREATE OR REPLACE VIEW volv_sms_msg_link AS
+    SELECT l.msg_link_id,l.msg_id,l.character_id,m.msg_date_created,m.msg_date_created_secs,m.msg_text,m.sender_id,m.sender_name,m.sender_display_name,m.recipient_names,m.recipient_ids,l.msg_link_type,l.msg_link_display,l.msg_date_read,UNIX_TIMESTAMP(l.msg_date_read) AS msg_date_read_secs,IF(ISNULL(l.msg_date_read),1,0) AS msg_is_unread FROM vol_sms_msg_link AS l LEFT JOIN volv_sms_msg AS m ON l.msg_id=m.msg_id ORDER BY m.msg_date_created;
+
+-- SQL Schema for the Rumor System.
+CREATE TABLE IF NOT EXISTS vol_rumor_circle (
+    circle_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    circle_name VARCHAR(255) NOT NULL UNIQUE,
+    circle_date_created DATETIME,
+    circle_read_lock VARCHAR(255) NOT NULL DEFAULT '#TRUE',
+    circle_post_lock VARCHAR(255) NOT NULL DEFAULT '#TRUE',
+    circle_admin_lock VARCHAR(255) NOT NULL DEFAULT 'V`ADMIN:>0',
+    circle_description TEXT,
+    PRIMARY KEY(circle_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
+
+CREATE TABLE IF NOT EXISTS vol_rumor (
+    rumor_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    circle_id INT UNSIGNED NOT NULL,
+    rumor_date_created DATETIME NOT NULL,
+    rumor_date_modified DATETIME NOT NULL,
+    rumor_date_timeout DATETIME NOT NULL,
+    rumor_final_countdown TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    character_id INT UNSIGNED NOT NULL,
+    rumor_subject VARCHAR(255) NOT NULL,
+    rumor_deleted TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    PRIMARY KEY(rumor_id),
+    FOREIGN KEY(circle_id) REFERENCES vol_rumor_circle(circle_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY(character_id) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    INDEX(rumor_date_created),
+    INDEX(rumor_date_modified, rumor_deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
+
+CREATE OR REPLACE VIEW volv_rumor AS
+    SELECT r.rumor_id AS rumor_id,r.rumor_subject AS rumor_subject,r.rumor_date_created AS rumor_date_created,UNIX_TIMESTAMP(r.rumor_date_created) AS rumor_date_created_secs,r.rumor_date_modified AS rumor_date_modified,UNIX_TIMESTAMP(r.rumor_date_modified) AS rumor_date_modified_secs,r.rumor_date_timeout AS rumor_date_timeout,UNIX_TIMESTAMP(r.rumor_date_timeout) AS rumor_date_timeout_secs,r.rumor_final_countdown AS rumor_final_countdown,r.rumor_deleted,r.character_id AS character_id,c.character_name AS character_name,c.character_objid AS character_objid,c.account_id AS character_account,cir.* FROM vol_rumor AS r LEFT JOIn volv_character AS c ON r.character_id=c.character_id LEFT JOIN vol_rumor_circle AS cir ON r.circle_id=cir.circle_id;
+
+CREATE TABLE IF NOT EXISTS vol_rumor_read (
+    rumor_id INT UNSIGNED NOT NULL,
+    character_id INT UNSIGNED NOT NULL,
+    rumor_date_read DATETIME NOT NULL,
+    FOREIGN KEY(rumor_id) REFERENCES vol_rumor(rumor_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY(character_id) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    UNIQUE(rumor_id, character_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
+
+CREATE TABLE IF NOT EXISTS vol_rumor_comment (
+    comment_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    rumor_id INT UNSIGNED NOT NULL,
+    character_id INT UNSIGNED NOT NULL,
+    comment_date_created DATETIME NOT NULL,
+    comment_type TINYINT NOT NULL DEFAULT 0,
+    comment_text TEXT,
+    PRIMARY KEY(comment_id),
+    FOREIGN KEY(rumor_id) REFERENCES vol_rumor(rumor_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY(character_id) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    INDEX(rumor_id, comment_date_created)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
+
+CREATE OR REPLACE VIEW volv_rumor_comment AS
+    SELECT comment_id,rumor_id,comment_date_created,UNIX_TIMESTAMP(comment_date_created) AS comment_date_created_secs,comment_type,comment_text,cn.character_id,cn.character_name,cn.character_objid,cn.account_id AS character_account FROM vol_rumor_comment AS c LEFT JOIN volv_character AS cn ON c.character_id=cn.character_id;
+
+CREATE OR REPLACE VIEW volv_rumor_comment_agg AS
+    SELECT rumor_id,MAX(comment_date_created) AS oldest_comment,SUM(comment_type) AS rumor_rating FROM vol_rumor_comment GROUP BY rumor_id;
+
+CREATE OR REPLACE VIEW volv_rumor_agg AS
+    SELECT r.*,a.oldest_comment,UNIX_TIMESTAMP(a.oldest_comment) AS oldest_comment_secs,a.rumor_rating FROM volv_rumor AS r LEFT JOIN volv_rumor_comment_agg AS a ON r.rumor_id=a.rumor_id;
+
 -- SQL Schema for the Csys Core 
 CREATE TABLE IF NOT EXISTS vol_centity (
 	centity_id INT UNSIGNED NOT NULL,
 	centity_date_created DATETIME,
 	centity_version TINYINT UNSIGNED NOT NULL DEFAULT 0,
 	centity_type TINYINT UNSIGNED NOT NULL DEFAULT 0,
-	centity_is_deleted BOOL NOT NULL DEFAULT FALSE,
+	centity_owner INT UNSIGNED NULL,
+	centity_claim_lock VARCHAR(255) NOT NULL DEFAULT '#FALSE',
+	centity_approved BOOL NOT NULL DEFAULT FALSE,
 	PRIMARY KEY(centity_id),
 	FOREIGN KEY(centity_id) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
-	INDEX(centity_version,centity_type,centity_is_deleted)
+	FOREIGN KEY(centity_owner) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
+	INDEX(centity_version,centity_type,centity_owner)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
 
 CREATE TABLE IF NOT EXISTS vol_ctrait (
@@ -1200,23 +1319,46 @@ CREATE TABLE IF NOT EXISTS vol_ctrait (
 	trait_id TINYINT UNSIGNED NOT NULL DEFAULT 0,
 	trait_type TINYINT UNSIGNED NOT NULL DEFAULT 0,
 	trait_value INT SIGNED NOT NULL DEFAULT 0,
+	trait_flags_1 TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	trait_flags_2 TINYINT UNSIGNED NOT NULL DEFAULT 0,
 	FOREIGN KEY(centity_id) REFERENCES vol_centity(centity_id) ON DELETE CASCADE ON UPDATE CASCADE,
 	UNIQUE(centity_id,trait_type,trait_id)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
 
 CREATE TABLE IF NOT EXISTS vol_clink (
 	clink_id MEDIUMINT UNSIGNED NOT NULL AUTO_INCREMENT,
-	clink_display_num MEDIUMINT UNSIGNED NOT NULL,
 	character_id INT UNSIGNED NOT NULL,
 	centity_id INT UNSIGNED NOT NULL,
 	clink_approved BOOL NOT NULL DEFAULT FALSE,
-	clink_parent MEDIUMINT UNSIGNED NULL,
+	clink_loan_from INT UNSIGNED NULL,
+	clink_type TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	clink_locked TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	consequences_source INT UNSIGNED NULL,
+	consequences_date_gained DATETIME NULL,
+	consequences_date_timeout DATETIME NULL,
+	consequences_tier TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	consequences_scenes VARCHAR(255) NULL,
 	PRIMARY KEY(clink_id),
+	UNIQUE(character_id,centity_id),
 	FOREIGN KEY(centity_id) REFERENCES vol_centity(centity_id) ON UPDATE CASCADE ON DELETE CASCADE,
-	FOREIGN KEY(clink_parent) REFERENCES vol_clink(clink_id) ON UPDATE CASCADE ON DELETE CASCADE,
+	FOREIGN KEY(clink_loan_from) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	FOREIGN KEY(character_id) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
-	INDEX(character_id,clink_display_num,centity_id)
+	FOREIGN KEY(consequences_source) REFERENCES vol_entity(entity_id) ON UPDATE CASCADE ON DELETE CASCADE,
+	INDEX(consequences_tier,consequences_date_timeout)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
+
+
+
+CREATE TABLE IF NOT EXISTS vol_clink_trait (
+	clink_id MEDIUMINT UNSIGNED NOT NULL,
+	trait_id TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	trait_type TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	trait_value INT SIGNED NOT NULL DEFAULT 0,
+	trait_flags_1 TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	trait_flags_2 TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	FOREIGN KEY(clink_id) REFERENCES vol_clink(clink_id) ON DELETE CASCADE ON UPDATE CASCADE,
+	UNIQUE(clink_id,trait_type,trait_id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
 
 CREATE TABLE IF NOT EXISTS vol_carmory (
 	carmory_id MEDIUMINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -1243,3 +1385,16 @@ CREATE TABLE IF NOT EXISTS vol_cattack_parameter (
 	cparameter_value SMALLINT SIGNED NOT NULL DEFAULT 0,
 	UNIQUE(cattack_id,cparameter_type,cparameter_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
+
+CREATE TABLE IF NOT EXISTS vol_clog (
+  clog_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  character_id INT UNSIGNED NOT NULL,
+  clog_date_created DATETIME NOT NULL,
+  clog_type TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  clog_text TEXT NOT NULL,
+  PRIMARY KEY(clog_id),
+  FOREIGN KEY(character_id) REFERENCES vol_character(character_id) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci AUTO_INCREMENT=1;
+
+CREATE OR REPLACE VIEW volv_clog AS
+  SELECT cl.clog_id,cl.clog_date_created,UNIX_TIMESTAMP(cl.clog_date_created) AS clog_date_created_secs,cl.clog_type,cl.clog_text,ch.* FROM vol_clog AS cl LEFT JOIN volv_character AS ch ON ch.character_id=cl.character_id;
