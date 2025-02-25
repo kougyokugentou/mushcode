@@ -1107,6 +1107,14 @@ CREATE OR REPLACE VIEW volv_scene AS
 	FROM vol_scene AS s LEFT JOIN volv_actor AS a ON s.scene_id=a.scene_id AND a.actor_type=2
 	ORDER BY s.scene_id;
 
+CREATE TABLE IF NOT EXISTS vol_actrole (
+   actrole_id INT AUTO_INCREMENT PRIMARY KEY,
+   actor_id INT NOT NULL,
+   actrole_name VARCHAR(255) NOT NULL,
+   UNIQUE(actor_id,actrole_name),
+   FOREIGN KEY (actor_id) REFERENCES vol_actor(actor_id) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS vol_action_source (
 	source_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
 	scene_id INT UNSIGNED NOT NULL,
@@ -1119,24 +1127,26 @@ CREATE TABLE IF NOT EXISTS vol_action_source (
 	UNIQUE(scene_id, source_objid, source_name, source_vr, source_type)
 	) ENGINE=InnoDB;
 
+CREATE OR REPLACE VIEW volv_actrole AS
+    SELECT a.actrole_id,a.actrole_name,c.* FROM vol_actrole AS a LEFT JOIN volv_actor AS c ON c.actor_id=a.actor_id;
+
 CREATE TABLE IF NOT EXISTS vol_action (
 	action_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-	actor_id INT UNSIGNED NOT NULL,
+	actrole_id INT UNSIGNED NOT NULL,
 	source_id INT UNSIGNED NOT NULL,
 	action_is_deleted BOOL NOT NULL DEFAULT FALSE,
-	action_type TINYINT UNSIGNED DEFAULT 0,
 	action_date_created DATETIME NOT NULL,
 	action_text TEXT NOT NULL,
 	action_text_render TEXT NULL,
 	PRIMARY KEY(action_id),
-	INDEX(actor_id, action_is_deleted),
-	FOREIGN KEY(actor_id) REFERENCES vol_actor(actor_id) ON UPDATE CASCADE ON DELETE CASCADE,
+	INDEX(actrole_id, action_is_deleted),
+	FOREIGN KEY(actrole_id) REFERENCES vol_actor(actor_id) ON UPDATE CASCADE ON DELETE CASCADE,
 	FOREIGN KEY(source_id) REFERENCES vol_action_source(source_id) ON UPDATE CASCADE ON DELETE CASCADE
 	) ENGINE=InnoDB;
 
 CREATE OR REPLACE VIEW volv_action AS
-	SELECT a.action_id,ac.actor_id,ac.scene_id,ac.character_id,ac.character_name,ac.character_objid,ac.actor_type,a.source_id,sc.source_objid,sc.source_vr,sc.source_name,sc.source_type,a.action_type,a.action_date_created,UNIX_TIMESTAMP(a.action_date_created) AS action_date_created_secs,a.action_is_deleted,a.action_text,a.action_text_render
-	FROM vol_action AS a LEFT JOIN volv_actor AS ac ON a.actor_id=ac.actor_id LEFT JOIN vol_action_source AS sc ON a.source_id=sc.source_id
+	SELECT a.action_id,ac.actor_id,ac.actrole_id,ac.actrole_name,ac.scene_id,ac.character_id,ac.character_name,ac.character_objid,ac.actor_type,a.source_id,sc.source_objid,sc.source_vr,sc.source_name,sc.source_type,a.action_date_created,UNIX_TIMESTAMP(a.action_date_created) AS action_date_created_secs,a.action_is_deleted,a.action_text,a.action_text_render
+	FROM vol_action AS a LEFT JOIN volv_actrole AS ac ON a.actrole_id=ac.actrole_id LEFT JOIN vol_action_source AS sc ON a.source_id=sc.source_id
 	ORDER BY ac.scene_id,a.action_date_created;
 
 CREATE OR REPLACE VIEW volv_action_agg AS

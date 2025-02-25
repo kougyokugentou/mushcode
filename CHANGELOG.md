@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## Version 3.6
+
+
 ## Version 3.5
 * (Experimental) Rhost support is in! There's probably a plethora of bugs, but much of the code is working. I'm still hammering out the kinks but feel welcome to try it.
 
